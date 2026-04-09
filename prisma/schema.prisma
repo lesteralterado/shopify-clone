@@ -1,0 +1,328 @@
+// Prisma schema for Shopify-like E-commerce Platform
+
+generator client {
+  provider = "prisma-client-js"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// User Model
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  password      String?
+  image         String?
+  role          String    @default("customer") // customer, admin
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  orders        Order[]
+  addresses     Address[]
+  reviews       Review[]
+  wishlist      WishlistItem[]
+}
+
+// NextAuth Models
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// Category Model
+model Category {
+  id          String     @id @default(cuid())
+  name        String     @unique
+  slug        String     @unique
+  description String?
+  image       String?
+  parentId    String?
+  parent      Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryHierarchy")
+  products    Product[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+// Product Model
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String
+  price       Float
+  comparePrice Float?
+  sku         String?  @unique
+  stock       Int      @default(0)
+  isActive    Boolean  @default(true)
+  isFeatured  Boolean  @default(false)
+  tags        String?  // JSON string array of tags
+  images      ProductImage[]
+  variants    ProductVariant[]
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id])
+  orderItems  OrderItem[]
+  reviews     Review[]
+  wishlistItems WishlistItem[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ProductImage {
+  id        String  @id @default(cuid())
+  url       String
+  alt       String?
+  position  Int     @default(0)
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model ProductVariant {
+  id          String  @id @default(cuid())
+  name        String
+  sku         String?
+  price       Float?
+  stock       Int     @default(0)
+  options     String? // JSON string for variant options like {"size": "M", "color": "Red"}
+  productId   String
+  product     Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderItems  OrderItem[]
+}
+
+// Order Model
+model Order {
+  id              String      @id @default(cuid())
+  orderNumber     String      @unique
+  status          String      @default("pending") // pending, processing, shipped, delivered, cancelled, refunded
+  userId          String?
+  user            User?       @relation(fields: [userId], references: [id])
+  email           String
+  shippingAddress String      @default("{}") // JSON string
+  billingAddress  String      @default("{}") // JSON string
+  subtotal        Float
+  shippingCost    Float       @default(0)
+  tax             Float       @default(0)
+  total           Float
+  notes           String?
+  items           OrderItem[]
+  transactions    Transaction[]
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+}
+
+model OrderItem {
+  id            String        @id @default(cuid())
+  orderId       String
+  order         Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId     String
+  product       Product       @relation(fields: [productId], references: [id])
+  variantId     String?
+  variant       ProductVariant? @relation(fields: [variantId], references: [id])
+  quantity      Int
+  price         Float
+  total         Float
+  createdAt     DateTime      @default(now())
+}
+
+// Transaction Model (for payment tracking)
+model Transaction {
+  id            String   @id @default(cuid())
+  orderId       String
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  type          String   // payment, refund
+  method        String   // stripe, paypal
+  amount        Float
+  status        String   // pending, completed, failed, refunded
+  transactionId String?  // External payment ID
+  metadata      String?  // JSON string for additional data
+  createdAt     DateTime @default(now())
+}
+
+// Address Model
+model Address {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  firstName  String
+  lastName   String
+  company    String?
+  address1   String
+  address2   String?
+  city       String
+  state      String?
+  postalCode String
+  country    String
+  phone      String?
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+// Review Model
+model Review {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  rating    Int      // 1-5
+  title     String?
+  content   String?
+  isVerified Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Wishlist Model
+model WishlistItem {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
+}
+
+// Settings Model (for store configuration)
+model Settings {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Coupon Model
+model Coupon {
+  id            String    @id @default(cuid())
+  code          String    @unique
+  description   String?
+  discountType  String    @default("percentage") // percentage, fixed
+  discountValue Float
+  minPurchase   Float     @default(0)
+  maxDiscount   Float?    // Maximum discount for percentage coupons
+  maxUses       Int       @default(0) // 0 = unlimited
+  currentUses   Int       @default(0)
+  startDate     DateTime
+  endDate       DateTime
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+// Blog Post Model
+model BlogPost {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique
+  excerpt     String?
+  content     String
+  image       String?
+  author      String?
+  category    String?
+  tags        String?  // JSON string array
+  isPublished Boolean  @default(false)
+  isFeatured  Boolean  @default(false)
+  views       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Property Listing Model (Real Estate)
+model Property {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique
+  description String
+  propertyType String   // house, apartment, condo, land, commercial
+  status      String   @default("for_sale") // for_sale, for_rent, sold, rented
+  price       Float
+  priceType   String   @default("sale") // sale, rent
+  bedrooms    Int?
+  bathrooms   Float?
+  floorArea   Float?   // in sqm
+  lotArea     Float?   // in sqm
+  yearBuilt   Int?
+  parking     Int?
+  images      PropertyImage[]
+  features    String?  // JSON string array of features
+  address     String?
+  city        String?
+  province    String?
+  region      String?
+  latitude    Float?
+  longitude   Float?
+  isFeatured  Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model PropertyImage {
+  id         String  @id @default(cuid())
+  url        String
+  alt        String?
+  position   Int     @default(0)
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+}
+
+// Booking Model
+model Booking {
+  id              String   @id @default(cuid())
+  bookingType     String   // product, property, service, general
+  referenceNumber String   @unique
+  firstName       String
+  lastName        String
+  email           String
+  phone           String
+  date            DateTime
+  time            String?
+  numberOfGuests  Int?
+  specialRequests String?
+  status          String   @default("pending") // pending, confirmed, cancelled, completed
+  productId       String?
+  propertyId      String?
+  totalPrice      Float?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
